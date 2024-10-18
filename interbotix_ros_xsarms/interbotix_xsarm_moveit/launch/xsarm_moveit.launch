@@ -13,7 +13,7 @@
   <arg name="use_gazebo"                        default="false"/>
   <arg name="use_actual"                        default="false"/>
   <arg name="use_fake"                          default="false"/>
-  <arg name="dof"                               default="5"/>
+  <arg name="dof"                               default="6"/>
   <arg name="world_name"                        default="$(find interbotix_xsarm_gazebo)/worlds/xsarm_gazebo.world"/>
 
   <include if="$(arg use_gazebo)" file="$(find interbotix_xsarm_gazebo)/launch/xsarm_gazebo.launch">

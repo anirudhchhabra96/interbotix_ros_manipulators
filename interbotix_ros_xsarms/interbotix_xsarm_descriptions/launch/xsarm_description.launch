@@ -12,7 +12,7 @@
   <arg name="load_gazebo_configs"               default="false"/>
   <arg name="use_joint_pub"                     default="false"/>
   <arg name="use_joint_pub_gui"                 default="false"/>
-  <arg name="rate"                              default="10"/>
+  <arg name="rate"                              default="100"/>
   <arg name="source_list"                       default="[]"/>
   <arg name="rvizconfig"                        default="$(find interbotix_xsarm_descriptions)/rviz/xsarm_description.rviz" />
   <arg name="model"                             default="$(find interbotix_xsarm_descriptions)/urdf/$(arg robot_model).urdf.xacro
@@ -34,6 +34,8 @@
     ns="$(arg robot_name)">
     <param name="rate" value="$(arg rate)"/>
     <rosparam param="source_list" subst_value="True">$(arg source_list)</rosparam>
+    <!-- <rosparam param="source_list" subst_value="True">["mobile_wx250s/joint_states"]</rosparam> -->
+    <!-- <rosparam param="source_list" subst_value="True">["mobile_wx250s/joint_states"]</rosparam> -->
   </node>
 
   <node if="$(arg use_joint_pub_gui)"
@@ -43,13 +45,14 @@
     ns="$(arg robot_name)">
   </node>
 
+  <!-- Comment this "robot_state_publisher" node when using the 'sc_simulator_moveit' package -->
   <node
     name="robot_state_publisher"
     pkg="robot_state_publisher"
     type="robot_state_publisher"
     ns="$(arg robot_name)">
   </node>
-
+  
   <node if="$(arg use_rviz)"
     name="rviz"
     pkg="rviz"

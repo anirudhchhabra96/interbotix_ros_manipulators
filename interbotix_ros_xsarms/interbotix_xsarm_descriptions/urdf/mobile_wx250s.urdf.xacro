@@ -92,7 +92,7 @@
 
   <joint name="shoulder" type="revolute">
     <axis xyz="0 1 0"/>
-    <limit effort="20" lower="${radians(-108)}" upper="${radians(114)}" velocity="${pi}"/>
+    <limit effort="2" lower="${radians(-108)}" upper="${radians(114)}" velocity="${pi}"/>
     <origin rpy="0 0 0" xyz="0 0 0.03865"/>
     <parent link="$(arg robot_name)/shoulder_link"/>
     <child link="$(arg robot_name)/upper_arm_link"/>
@@ -304,7 +304,7 @@
     </inertial>
   </link>
 
-  <joint name="gripper" type="continuous">
+  <!-- <joint name="gripper" type="continuous">
     <axis xyz="1 0 0"/>
     <limit effort="1" velocity="${pi}"/>
     <origin rpy="0 0 0" xyz="0.0055 0 0"/>
@@ -342,11 +342,11 @@
       <mass value="0.00434" />
       <inertia ixx="0.0000005923" iyy="0.0000011156" izz="0.0000005743" ixy="0.0000000000" ixz="0.0000003195" iyz="-0.0000000004" />
     </inertial>
-  </link>
+  </link> -->
 
   <!-- If the AR tag is being used, then add the AR tag mount -->
 
-  <xacro:if value="$(arg show_ar_tag)">
+  <!-- <xacro:if value="$(arg show_ar_tag)">
 
     <joint name="ar_tag" type="fixed">
       <axis xyz="0 0 0"/>
@@ -376,11 +376,11 @@
       </inertial>
     </link>
 
-  </xacro:if>
+  </xacro:if> -->
 
   <!-- If the gripper bar is being used, then also add the gripper bar -->
 
-  <xacro:if value="$(arg show_gripper_bar)">
+  <!-- <xacro:if value="$(arg show_gripper_bar)">
 
     <joint name="gripper_bar" type="fixed">
       <axis xyz="1 0 0"/>
@@ -422,11 +422,11 @@
         <mass value="0.001" />
         <inertia ixx="0.001" iyy="0.001" izz="0.001" ixy="0" ixz="0" iyz="0" />
       </inertial>
-    </link>
+    </link> -->
 
     <!-- If the gripper fingers are being used, add those as well -->
 
-    <xacro:if value="$(arg show_gripper_fingers)">
+    <!-- <xacro:if value="$(arg show_gripper_fingers)">
 
       <joint name="left_finger" type="prismatic">
         <axis xyz="0 1 0"/>
@@ -527,7 +527,7 @@
 
     </xacro:if>
 
-  </xacro:if>
+  </xacro:if> -->
 
   <xacro:if value="${urdf_loc != ''}">
     <xacro:include filename="${urdf_loc}"/>
