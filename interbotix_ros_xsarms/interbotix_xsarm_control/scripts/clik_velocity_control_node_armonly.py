@@ -1,8 +1,9 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 import rospy
 import numpy as np
 import PyKDL as kdl
 from sensor_msgs.msg import JointState
+from geometry_msgs.msg import Twist
 from interbotix_xs_msgs.msg import JointGroupCommand  # Import the correct message type
 from urdf_parser_py.urdf import URDF
 from kdl_parser_py.urdf import treeFromParam
@@ -11,6 +12,9 @@ class InverseKinematicsControl:
     def __init__(self):
         # Initialize the node
         rospy.init_node('ik_velocity_control', anonymous=True)
+
+        # Subscribe to the cartesian velocity command topic
+        self.cartesian_vel_sub = rospy.Subscriber("/desired_cartesian_velocity", Twist, self.cartesian_vel_command_callback)
 
         # Publish to the joint velocity command topic
         self.joint_vel_pub = rospy.Publisher("/mobile_wx250s/commands/joint_group", JointGroupCommand, queue_size=10)
@@ -43,8 +47,8 @@ class InverseKinematicsControl:
         self.joint_position_limits_upper = np.array([3.0, 3.0, 3.0, 3.0, 3.0, 3.0])
 
         # Define desired Cartesian velocity
-        self.desired_linear_velocity = np.array([0.1, 0.0, 0.1])  # 0.1 m/s in x-direction
-        self.desired_angular_velocity = np.array([0.0, 0.0, 0.0])  # 0.1 rad/s around z-axis
+        # self.desired_linear_velocity = np.array([0.1, 0.0, 0.1])  # 0.1 m/s in x-direction
+        # self.desired_angular_velocity = np.array([0.0, 0.0, 0.0])  # 0.1 rad/s around z-axis
 
         # Set up solvers
         self.jacobian_solver = kdl.ChainJntToJacSolver(self.kdl_chain)
@@ -53,9 +57,9 @@ class InverseKinematicsControl:
         # Set the loop rate
         self.rate = rospy.Rate(10)  # 10 Hz
 
-    def compute_joint_velocities(self):
-        cartesian_velocity = np.hstack((self.desired_linear_velocity, self.desired_angular_velocity))
-        # rospy.loginfo(f"Desired Cartesian velocity: {cartesian_velocity}")
+    def compute_joint_velocities(self, cartesian_velocity):
+        # cartesian_velocity = np.hstack((self.desired_linear_velocity, self.desired_angular_velocity))
+        rospy.loginfo(f"Desired Cartesian velocity: {cartesian_velocity}")
 
         for i in range(self.num_joints):
             self.joint_position_kdl[i] = self.joint_positions[i]
@@ -84,6 +88,11 @@ class InverseKinematicsControl:
 
         self.joint_velocities = self.apply_joint_limits(self.clamped_joint_velocities)
 
+    def cartesian_vel_command_callback(self, msg):
+        # np.array([0.1, 0.0, 0.1])  # 0.1 m/s in x-direction
+        desired_cartesian_velocity = [msg.linear.x, msg.linear.y, msg.linear.z, msg.angular.x, msg.angular.y, msg.angular.z]
+        rospy.loginfo(f"Received cartesian velocity command: {desired_cartesian_velocity}")
+        self.compute_joint_velocities(desired_cartesian_velocity)
 
 
     def joint_state_callback(self, msg):
@@ -116,7 +125,7 @@ class InverseKinematicsControl:
         return joint_velocities
 
     def publish_joint_velocities(self):
-        rospy.loginfo("entered publish function")
+        # rospy.loginfo("entered publish function")
         # # Convert numpy array to Float64MultiArray message
         # joint_vel_msg = Float64MultiArray()
         # joint_vel_msg.data = self.joint_velocities.tolist()
@@ -131,20 +140,20 @@ class InverseKinematicsControl:
         joint_cmd_msg.cmd = self.joint_velocities.tolist()  # List of joint velocities
         
         # Log for debugging
-        rospy.loginfo(f"Publishing joint velocities: {joint_cmd_msg.cmd} for group 'arm'")
+        # rospy.loginfo(f"Publishing joint velocities: {joint_cmd_msg.cmd} for group 'arm'")
         # rospy.loginfo(f"Sending joint velocity command: {command.cmd}")
         # Publish the message
         self.joint_vel_pub.publish(joint_cmd_msg)
         # rospy.loginfo(f"Publishing joint velocities: {joint_cmd_msg}")
         # self.joint_vel_pub.publish(joint_cmd_msg)
-        rospy.loginfo("Joint velocities published")
+        # rospy.loginfo("Joint velocities published")
 
 
 
 
     def run(self):
         while not rospy.is_shutdown():
-            self.compute_joint_velocities()  # Compute and publish joint velocities
+            # self.compute_joint_velocities()  # Compute and publish joint velocities
             self.publish_joint_velocities()
             self.rate.sleep()
 
