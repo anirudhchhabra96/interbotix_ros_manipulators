@@ -107,8 +107,7 @@ class InverseKinematicsControl:
         return transformed_twist
     
     def cartesian_vel_command_callback(self, msg):
-        # np.array([0.1, 0.0, 0.1])  # 0.1 m/s in x-direction
-
+        
         tf_buffer = tf2_ros.Buffer()
         tf_listener = tf2_ros.TransformListener(tf_buffer)
 
