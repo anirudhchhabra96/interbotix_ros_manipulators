@@ -3,10 +3,13 @@ import rospy
 import numpy as np
 import PyKDL as kdl
 from sensor_msgs.msg import JointState
-from geometry_msgs.msg import Twist
+from geometry_msgs.msg import Twist, Vector3Stamped
+import geometry_msgs
 from interbotix_xs_msgs.msg import JointGroupCommand  # Import the correct message type
 from urdf_parser_py.urdf import URDF
 from kdl_parser_py.urdf import treeFromParam
+import tf2_ros
+import tf2_geometry_msgs
 
 class InverseKinematicsControl:
     def __init__(self):
@@ -31,11 +34,7 @@ class InverseKinematicsControl:
         if not ok:
             rospy.logerr("Failed to extract KDL tree from the robot description")
 
-
         self.kdl_chain = self.kdl_tree.getChain("mobile_wx250s/base_link", "mobile_wx250s/ee_arm_link")
-        # rospy.loginfo(f"KDL Tree successfully built: {self.kdl_tree}")
-        # rospy.loginfo(f"KDL Chain from 'base_link' to 'ee_arm_link' with {self.kdl_chain.getNrOfJoints()} joints.")
-
 
         # Number of joints
         self.num_joints = self.kdl_chain.getNrOfJoints()
@@ -46,10 +45,6 @@ class InverseKinematicsControl:
         self.joint_position_limits_lower = np.array([-3.0, -3.0, -3.0, -3.0, -3.0, -3.0])
         self.joint_position_limits_upper = np.array([3.0, 3.0, 3.0, 3.0, 3.0, 3.0])
 
-        # Define desired Cartesian velocity
-        # self.desired_linear_velocity = np.array([0.1, 0.0, 0.1])  # 0.1 m/s in x-direction
-        # self.desired_angular_velocity = np.array([0.0, 0.0, 0.0])  # 0.1 rad/s around z-axis
-
         # Set up solvers
         self.jacobian_solver = kdl.ChainJntToJacSolver(self.kdl_chain)
         self.joint_position_kdl = kdl.JntArray(self.num_joints)
@@ -58,7 +53,7 @@ class InverseKinematicsControl:
         self.rate = rospy.Rate(10)  # 10 Hz
 
     def compute_joint_velocities(self, cartesian_velocity):
-        # cartesian_velocity = np.hstack((self.desired_linear_velocity, self.desired_angular_velocity))
+
         rospy.loginfo(f"Desired Cartesian velocity: {cartesian_velocity}")
 
         for i in range(self.num_joints):
@@ -87,14 +82,49 @@ class InverseKinematicsControl:
         # self.clamped_joint_velocities =  self.joint_velocities
 
         self.joint_velocities = self.apply_joint_limits(self.clamped_joint_velocities)
-
+    
+    def do_transform_twist(self, twist, transform):
+        # Convert rotation (quaternion) from the transform into a numpy array
+        # Transform linear velocity
+        linear_velocity = Vector3Stamped()
+        linear_velocity.vector = twist.linear
+        linear_velocity.header.frame_id = transform.header.frame_id
+    
+        # Use tf2 to transform the linear velocity
+        transformed_linear = tf2_geometry_msgs.do_transform_vector3(linear_velocity, transform)
+        # Transform angular velocity
+        angular_velocity = Vector3Stamped()
+        angular_velocity.vector = twist.angular
+        angular_velocity.header.frame_id = transform.header.frame_id
+        # Use tf2 to transform the angular velocity
+        transformed_angular = tf2_geometry_msgs.do_transform_vector3(angular_velocity, transform)
+            
+        # Create new Twist message with the transformed velocities
+        transformed_twist = Twist()
+        transformed_twist.linear = transformed_linear.vector
+        transformed_twist.angular = transformed_angular.vector
+    
+        return transformed_twist
+    
     def cartesian_vel_command_callback(self, msg):
         # np.array([0.1, 0.0, 0.1])  # 0.1 m/s in x-direction
-        desired_cartesian_velocity = [msg.linear.x, msg.linear.y, msg.linear.z, msg.angular.x, msg.angular.y, msg.angular.z]
+
+        tf_buffer = tf2_ros.Buffer()
+        tf_listener = tf2_ros.TransformListener(tf_buffer)
+
+        try:
+            transform_base_ee = tf_buffer.lookup_transform("mobile_wx250s/base_link","mobile_wx250s/ee_arm_link", rospy.Time(0), rospy.Duration(1.0))
+            transformed_cart_vel_in_base_frame = self.do_transform_twist(msg, transform_base_ee)
+            rospy.loginfo(f"transformed velocity: {transformed_cart_vel_in_base_frame}")
+
+        except (tf2_ros.LookupException, tf2_ros.ConnectivityException, tf2_ros.ExtrapolationException) as e:
+            rospy.logwarn(f"Could not do transform: {e}")
+        msg1 = transformed_cart_vel_in_base_frame
+        desired_cartesian_velocity = [msg1.linear.x, msg1.linear.y, msg1.linear.z, msg1.angular.x, msg1.angular.y, msg1.angular.z]
         rospy.loginfo(f"Received cartesian velocity command: {desired_cartesian_velocity}")
         self.compute_joint_velocities(desired_cartesian_velocity)
 
-
+    
     def joint_state_callback(self, msg):
         # Initialize the joint positions array if not already initialized
         if len(self.joint_positions) != len(msg.position):
@@ -117,7 +147,9 @@ class InverseKinematicsControl:
     def apply_joint_limits(self, joint_velocities):
         # Ensure joint positions stay within limits
         for i in range(self.num_joints):
+            
             # rospy.loginfo(f"Joint {i}: position = {self.joint_positions[i]}, velocity = {joint_velocities[i]}, limits = ({self.joint_position_limits_lower[i]}, {self.joint_position_limits_upper[i]})")
+            
             if self.joint_positions[i] >= self.joint_position_limits_upper[i] and joint_velocities[i] > 0:
                 joint_velocities[i] = 0  # Stop positive motion at upper limit
             elif self.joint_positions[i] <= self.joint_position_limits_lower[i] and joint_velocities[i] < 0:
@@ -125,13 +157,8 @@ class InverseKinematicsControl:
         return joint_velocities
 
     def publish_joint_velocities(self):
+        
         # rospy.loginfo("entered publish function")
-        # # Convert numpy array to Float64MultiArray message
-        # joint_vel_msg = Float64MultiArray()
-        # joint_vel_msg.data = self.joint_velocities.tolist()
-
-        # # Publish joint velocities
-        # self.joint_vel_pub.publish(joint_vel_msg)
 
         # Create and populate the JointGroupCommand message
         joint_cmd_msg = JointGroupCommand()
@@ -139,15 +166,13 @@ class InverseKinematicsControl:
         
         joint_cmd_msg.cmd = self.joint_velocities.tolist()  # List of joint velocities
         
-        # Log for debugging
+        # Logging
         # rospy.loginfo(f"Publishing joint velocities: {joint_cmd_msg.cmd} for group 'arm'")
         # rospy.loginfo(f"Sending joint velocity command: {command.cmd}")
+        
         # Publish the message
         self.joint_vel_pub.publish(joint_cmd_msg)
-        # rospy.loginfo(f"Publishing joint velocities: {joint_cmd_msg}")
-        # self.joint_vel_pub.publish(joint_cmd_msg)
-        # rospy.loginfo("Joint velocities published")
-
+        
 
 
 
