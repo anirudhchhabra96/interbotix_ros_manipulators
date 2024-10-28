@@ -85,6 +85,7 @@ class InverseKinematicsControl:
     
     def do_transform_twist(self, twist, transform):
         # Convert rotation (quaternion) from the transform into a numpy array
+        
         # Transform linear velocity
         linear_velocity = Vector3Stamped()
         linear_velocity.vector = twist.linear
@@ -92,10 +93,12 @@ class InverseKinematicsControl:
     
         # Use tf2 to transform the linear velocity
         transformed_linear = tf2_geometry_msgs.do_transform_vector3(linear_velocity, transform)
+        
         # Transform angular velocity
         angular_velocity = Vector3Stamped()
         angular_velocity.vector = twist.angular
         angular_velocity.header.frame_id = transform.header.frame_id
+        
         # Use tf2 to transform the angular velocity
         transformed_angular = tf2_geometry_msgs.do_transform_vector3(angular_velocity, transform)
             
@@ -118,6 +121,7 @@ class InverseKinematicsControl:
 
         except (tf2_ros.LookupException, tf2_ros.ConnectivityException, tf2_ros.ExtrapolationException) as e:
             rospy.logwarn(f"Could not do transform: {e}")
+        
         msg1 = transformed_cart_vel_in_base_frame
         desired_cartesian_velocity = [msg1.linear.x, msg1.linear.y, msg1.linear.z, msg1.angular.x, msg1.angular.y, msg1.angular.z]
         rospy.loginfo(f"Received cartesian velocity command: {desired_cartesian_velocity}")
