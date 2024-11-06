@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 import rospy
 import numpy as np
 import PyKDL as kdl
@@ -10,6 +10,11 @@ from urdf_parser_py.urdf import URDF
 from kdl_parser_py.urdf import treeFromParam
 import tf2_ros
 import tf2_geometry_msgs
+from tf2_geometry_msgs import do_transform_vector3
+import geometry_msgs.msg
+import tf
+import os
+
 
 class InverseKinematicsControl:
     def __init__(self):
@@ -39,11 +44,12 @@ class InverseKinematicsControl:
         # Number of joints
         self.num_joints = self.kdl_chain.getNrOfJoints()
         self.joint_velocities = np.zeros(self.num_joints)
+        self.clamped_joint_velocities = np.zeros(self.num_joints)
         self.joint_positions = np.zeros(self.num_joints)
 
-        # Joint limits (confirm and update these)
-        self.joint_position_limits_lower = np.array([-3.0, -3.0, -3.0, -3.0, -3.0, -3.0])
-        self.joint_position_limits_upper = np.array([3.0, 3.0, 3.0, 3.0, 3.0, 3.0])
+        # Joint limits   |   Source: https://docs.trossenrobotics.com/interbotix_xsarms_docs/specifications/wx250s.html 
+        self.joint_position_limits_lower = np.deg2rad(np.array([-180, -108, -123, -180, -100, -180]))
+        self.joint_position_limits_upper = np.deg2rad(np.array([180, 114, 92, 180, 123, 180]))
 
         # Set up solvers
         self.jacobian_solver = kdl.ChainJntToJacSolver(self.kdl_chain)
@@ -58,6 +64,8 @@ class InverseKinematicsControl:
 
         for i in range(self.num_joints):
             self.joint_position_kdl[i] = self.joint_positions[i]
+        
+        rospy.loginfo(f"Joint states: {self.joint_position_kdl}")
 
         # Compute the Jacobian using KDL
         jacobian = kdl.Jacobian(self.num_joints)
@@ -68,68 +76,36 @@ class InverseKinematicsControl:
         for i in range(6):
             for j in range(self.num_joints):
                 jacobian_array[i, j] = jacobian[i, j]
-        # rospy.loginfo(f"Jacobian: \n{jacobian_array}")
-
-        try:
-            # Compute joint velocities using the inverse Jacobian
+        
+        # Compute joint velocities using Jacobian-based IK methods
+        try:    
+            ##--------------------------------------------------------------------------------------
+            ##              Using Jacobian Pseudoinverse
             self.joint_velocities = np.linalg.pinv(jacobian_array).dot(cartesian_velocity)
-            # rospy.loginfo(f"Computed joint velocities: {self.joint_velocities}")
+            ##--------------------------------------------------------------------------------------
+            
+            ##--------------------------------------------------------------------------------------
+            ##              Using Damped Jacobians
+            # damping_factor = 0.01
+            # jacobian_damped = jacobian_array.T @ np.linalg.inv(jacobian_array @ jacobian_array.T + damping_factor * np.identity(6))
+            # self.joint_velocities = np.dot(jacobian_damped, cartesian_velocity)
+            ##--------------------------------------------------------------------------------------
         except np.linalg.LinAlgError:
             rospy.logwarn("Jacobian is singular, unable to compute joint velocities.")
             self.joint_velocities = np.zeros(self.num_joints)
         
-        self.clamped_joint_velocities =  np.clip(self.joint_velocities, -0.2, 0.2)
-        # self.clamped_joint_velocities =  self.joint_velocities
+        self.clamped_joint_velocities =  np.clip(self.joint_velocities, -5, 5) # Check these limits - these are ideal values (no load condition)
 
-        self.joint_velocities = self.apply_joint_limits(self.clamped_joint_velocities)
-    
-    def do_transform_twist(self, twist, transform):
-        # Convert rotation (quaternion) from the transform into a numpy array
-        
-        # Transform linear velocity
-        linear_velocity = Vector3Stamped()
-        linear_velocity.vector = twist.linear
-        linear_velocity.header.frame_id = transform.header.frame_id
-    
-        # Use tf2 to transform the linear velocity
-        transformed_linear = tf2_geometry_msgs.do_transform_vector3(linear_velocity, transform)
-        
-        # Transform angular velocity
-        angular_velocity = Vector3Stamped()
-        angular_velocity.vector = twist.angular
-        angular_velocity.header.frame_id = transform.header.frame_id
-        
-        # Use tf2 to transform the angular velocity
-        transformed_angular = tf2_geometry_msgs.do_transform_vector3(angular_velocity, transform)
-            
-        # Create new Twist message with the transformed velocities
-        transformed_twist = Twist()
-        transformed_twist.linear = transformed_linear.vector
-        transformed_twist.angular = transformed_angular.vector
-    
-        return transformed_twist
-    
     def cartesian_vel_command_callback(self, msg):
-        
-        tf_buffer = tf2_ros.Buffer()
-        tf_listener = tf2_ros.TransformListener(tf_buffer)
-
-        try:
-            transform_base_ee = tf_buffer.lookup_transform("mobile_wx250s/base_link","mobile_wx250s/ee_arm_link", rospy.Time(0), rospy.Duration(1.0))
-            transformed_cart_vel_in_base_frame = self.do_transform_twist(msg, transform_base_ee)
-            rospy.loginfo(f"transformed velocity: {transformed_cart_vel_in_base_frame}")
-
-        except (tf2_ros.LookupException, tf2_ros.ConnectivityException, tf2_ros.ExtrapolationException) as e:
-            rospy.logwarn(f"Could not do transform: {e}")
-        
-        msg1 = transformed_cart_vel_in_base_frame
+        msg1 = msg
         desired_cartesian_velocity = [msg1.linear.x, msg1.linear.y, msg1.linear.z, msg1.angular.x, msg1.angular.y, msg1.angular.z]
-        rospy.loginfo(f"Received cartesian velocity command: {desired_cartesian_velocity}")
+        # rospy.loginfo(f"Received cartesian velocity command: {desired_cartesian_velocity}")
         self.compute_joint_velocities(desired_cartesian_velocity)
 
     
     def joint_state_callback(self, msg):
         # Initialize the joint positions array if not already initialized
+        
         if len(self.joint_positions) != len(msg.position):
             self.joint_positions = np.zeros(len(msg.position))
 
@@ -143,46 +119,46 @@ class InverseKinematicsControl:
 
         # Log the joint positions
         # rospy.loginfo(f"Updated joint positions: {self.joint_positions}")
-
-
-
-
+        
+    '''
+    apply_joint_limits(self, joint_velocities)
+            This function checks if joint position limits are reached, and if so, it sets the corresponding joint velocity to zero.
+    '''
+    
     def apply_joint_limits(self, joint_velocities):
         # Ensure joint positions stay within limits
         for i in range(self.num_joints):
             
             # rospy.loginfo(f"Joint {i}: position = {self.joint_positions[i]}, velocity = {joint_velocities[i]}, limits = ({self.joint_position_limits_lower[i]}, {self.joint_position_limits_upper[i]})")
-            
             if self.joint_positions[i] >= self.joint_position_limits_upper[i] and joint_velocities[i] > 0:
                 joint_velocities[i] = 0  # Stop positive motion at upper limit
             elif self.joint_positions[i] <= self.joint_position_limits_lower[i] and joint_velocities[i] < 0:
                 joint_velocities[i] = 0  # Stop negative motion at lower limit
         return joint_velocities
+    
+    '''
+    publish_joint_velocities(self)
+            This function publishes the calculated joint velocity commands to the /mobile_wx250s/commands/joint_group topic.
+    '''
 
     def publish_joint_velocities(self):
         
         # rospy.loginfo("entered publish function")
+        self.joint_velocities = self.apply_joint_limits(self.clamped_joint_velocities)
 
         # Create and populate the JointGroupCommand message
         joint_cmd_msg = JointGroupCommand()
         joint_cmd_msg.name = "arm"  # Name of the joint group (replace if necessary)
-        
         joint_cmd_msg.cmd = self.joint_velocities.tolist()  # List of joint velocities
-        
-        # Logging
-        # rospy.loginfo(f"Publishing joint velocities: {joint_cmd_msg.cmd} for group 'arm'")
-        # rospy.loginfo(f"Sending joint velocity command: {command.cmd}")
-        
+                
         # Publish the message
         self.joint_vel_pub.publish(joint_cmd_msg)
-        
-
-
 
     def run(self):
         while not rospy.is_shutdown():
             # self.compute_joint_velocities()  # Compute and publish joint velocities
             self.publish_joint_velocities()
+            os.system('clear')
             self.rate.sleep()
 
 if __name__ == '__main__':
