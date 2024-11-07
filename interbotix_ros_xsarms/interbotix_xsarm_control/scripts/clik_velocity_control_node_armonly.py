@@ -15,7 +15,6 @@ import geometry_msgs.msg
 import tf
 import os
 
-
 class InverseKinematicsControl:
     def __init__(self):
         # Initialize the node
