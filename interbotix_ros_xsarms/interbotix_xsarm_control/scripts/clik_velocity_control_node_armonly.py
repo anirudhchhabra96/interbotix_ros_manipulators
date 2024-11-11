@@ -29,6 +29,11 @@ class InverseKinematicsControl:
         # Subscribe to joint state topic to get the current joint positions
         self.joint_state_sub = rospy.Subscriber("/mobile_wx250s/joint_states", JointState, self.joint_state_callback)
 
+        self.joint_state_sim_sub = rospy.Subscriber("/joint_states_sim", JointState, self.joint_state_sim_callback)
+
+        # Publish the end-effector velocity
+        self.ee_vel_pub = rospy.Publisher("/end_effector_velocity", Twist, queue_size=10)
+
         # Retrieve the robot description from the ROS parameter server
         urdf_param = "/mobile_wx250s/robot_description"
         urdf_string = rospy.get_param(urdf_param)
@@ -59,12 +64,12 @@ class InverseKinematicsControl:
 
     def compute_joint_velocities(self, cartesian_velocity):
 
-        rospy.loginfo(f"Desired Cartesian velocity: {cartesian_velocity}")
+        # rospy.loginfo(f"Desired Cartesian velocity: {cartesian_velocity}")
 
         for i in range(self.num_joints):
             self.joint_position_kdl[i] = self.joint_positions[i]
         
-        rospy.loginfo(f"Joint states: {self.joint_position_kdl}")
+        # rospy.loginfo(f"Joint states: {self.joint_position_kdl}")
 
         # Compute the Jacobian using KDL
         jacobian = kdl.Jacobian(self.num_joints)
@@ -93,7 +98,7 @@ class InverseKinematicsControl:
             rospy.logwarn("Jacobian is singular, unable to compute joint velocities.")
             self.joint_velocities = np.zeros(self.num_joints)
         
-        self.clamped_joint_velocities =  np.clip(self.joint_velocities, -5, 5) # Check these limits - these are ideal values (no load condition)
+        self.clamped_joint_velocities =  np.clip(self.joint_velocities, -2.35, 2.35) # Check these limits - these are ideal values (no load condition)
 
     def cartesian_vel_command_callback(self, msg):
         msg1 = msg
@@ -101,7 +106,9 @@ class InverseKinematicsControl:
         # rospy.loginfo(f"Received cartesian velocity command: {desired_cartesian_velocity}")
         self.compute_joint_velocities(desired_cartesian_velocity)
 
-    
+    def joint_state_sim_callback(self, msg):
+        self.compute_end_effector_velocity(msg.velocity)
+
     def joint_state_callback(self, msg):
         # Initialize the joint positions array if not already initialized
         
@@ -118,6 +125,35 @@ class InverseKinematicsControl:
 
         # Log the joint positions
         # rospy.loginfo(f"Updated joint positions: {self.joint_positions}")
+        
+    def compute_end_effector_velocity(self, joint_velocities):
+        # Update joint positions in KDL
+        for i in range(self.num_joints):
+            self.joint_position_kdl[i] = self.joint_positions[i]
+
+        # Compute the Jacobian
+        jacobian = kdl.Jacobian(self.num_joints)
+        self.jacobian_solver.JntToJac(self.joint_position_kdl, jacobian)
+
+        # Convert KDL Jacobian to numpy array
+        jacobian_array = np.zeros((6, self.num_joints))
+        for i in range(6):
+            for j in range(self.num_joints):
+                jacobian_array[i, j] = jacobian[i, j]
+
+        # Compute end-effector velocity
+        ee_velocity = jacobian_array.dot(joint_velocities)
+        
+        # Create and publish the Twist message for end-effector velocity
+        ee_vel_msg = Twist()
+        ee_vel_msg.linear.x = ee_velocity[0]
+        ee_vel_msg.linear.y = ee_velocity[1]
+        ee_vel_msg.linear.z = ee_velocity[2]
+        ee_vel_msg.angular.x = ee_velocity[3]
+        ee_vel_msg.angular.y = ee_velocity[4]
+        ee_vel_msg.angular.z = ee_velocity[5]
+        
+        self.ee_vel_pub.publish(ee_vel_msg)
         
     '''
     apply_joint_limits(self, joint_velocities)
@@ -157,7 +193,7 @@ class InverseKinematicsControl:
         while not rospy.is_shutdown():
             # self.compute_joint_velocities()  # Compute and publish joint velocities
             self.publish_joint_velocities()
-            os.system('clear')
+            # os.system('clear')
             self.rate.sleep()
 
 if __name__ == '__main__':

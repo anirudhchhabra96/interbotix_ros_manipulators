@@ -40,4 +40,26 @@
     <param name="load_configs"                    value="$(arg load_configs)"/>
   </node>
 
+  <node name="jointstates_sim" 
+    pkg="interbotix_xsarm_control" 
+    type="sim_feedback.py" 
+    output="screen" 
+    ns="mobile_wx250s">
+  </node>
+
+  <node name="ik_velocity_control" 
+    pkg="interbotix_xsarm_control" 
+    type="clik_velocity_control_node_armonly.py" 
+    output="screen" 
+    ns="mobile_wx250s">
+  </node>
+
+  <node name="velocity_comparison_plotter" 
+    pkg="interbotix_xsarm_control" 
+    type="plot_ee_tracking.py" 
+    output="screen" 
+    ns="mobile_wx250s">
+  </node>
+
+
 </launch>
