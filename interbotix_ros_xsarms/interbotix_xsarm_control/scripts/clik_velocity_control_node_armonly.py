@@ -3,7 +3,7 @@ import rospy
 import numpy as np
 import PyKDL as kdl
 from sensor_msgs.msg import JointState
-from geometry_msgs.msg import Twist, Vector3Stamped
+from geometry_msgs.msg import Twist, Vector3Stamped, Pose
 import geometry_msgs
 from interbotix_xs_msgs.msg import JointGroupCommand  # Import the correct message type
 from urdf_parser_py.urdf import URDF
@@ -33,7 +33,7 @@ class InverseKinematicsControl:
 
         # Publish the end-effector velocity
         self.ee_vel_pub = rospy.Publisher("/end_effector_velocity", Twist, queue_size=10)
-
+        self.ee_pose_pub = rospy.Publisher("/ee_current_position", Pose, queue_size=10)
         # Retrieve the robot description from the ROS parameter server
         urdf_param = "/mobile_wx250s/robot_description"
         urdf_string = rospy.get_param(urdf_param)
@@ -58,6 +58,7 @@ class InverseKinematicsControl:
         # Set up solvers
         self.jacobian_solver = kdl.ChainJntToJacSolver(self.kdl_chain)
         self.joint_position_kdl = kdl.JntArray(self.num_joints)
+        self.fk_solver = kdl.ChainFkSolverPos_recursive(self.kdl_chain)  # Forward Kinematics solver
 
         # Set the loop rate
         self.rate = rospy.Rate(10)  # 10 Hz
@@ -81,7 +82,7 @@ class InverseKinematicsControl:
             for j in range(self.num_joints):
                 jacobian_array[i, j] = jacobian[i, j]
         
-        # Compute joint velocities using Jacobian-based IK methods
+        # Compute joint velocities using Jacobian-based Inverse Kinematics (IK) methods
         try:    
             ##--------------------------------------------------------------------------------------
             ##              Using Jacobian Pseudoinverse
@@ -99,6 +100,29 @@ class InverseKinematicsControl:
             self.joint_velocities = np.zeros(self.num_joints)
         
         self.clamped_joint_velocities =  np.clip(self.joint_velocities, -2.35, 2.35) # Check these limits - these are ideal values (no load condition)
+    
+    
+    def compute_end_effector_pose(self):
+        for i in range(self.num_joints):
+            self.joint_position_kdl[i] = self.joint_positions[i]
+
+        ee_frame = kdl.Frame()
+        self.fk_solver.JntToCart(self.joint_position_kdl, ee_frame)
+
+        ee_pose = Pose()
+        ee_pose.position.x = ee_frame.p[0]
+        ee_pose.position.y = ee_frame.p[1]
+        ee_pose.position.z = ee_frame.p[2]
+        
+        # Convert the rotation to a quaternion
+        rot = ee_frame.M.GetQuaternion()
+        ee_pose.orientation.x = rot[0]
+        ee_pose.orientation.y = rot[1]
+        ee_pose.orientation.z = rot[2]
+        ee_pose.orientation.w = rot[3]
+        
+        # Publish the end-effector pose
+        self.ee_pose_pub.publish(ee_pose)
 
     def cartesian_vel_command_callback(self, msg):
         msg1 = msg
@@ -125,6 +149,9 @@ class InverseKinematicsControl:
 
         # Log the joint positions
         # rospy.loginfo(f"Updated joint positions: {self.joint_positions}")
+        
+        # Compute and publish the current end-effector pose
+        self.compute_end_effector_pose()
         
     def compute_end_effector_velocity(self, joint_velocities):
         # Update joint positions in KDL

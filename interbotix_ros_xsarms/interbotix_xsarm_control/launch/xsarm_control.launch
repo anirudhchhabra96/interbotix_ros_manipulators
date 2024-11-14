@@ -40,7 +40,8 @@
     <param name="load_configs"                    value="$(arg load_configs)"/>
   </node>
 
-  <node name="jointstates_sim" 
+  <node if="$(arg use_sim)"
+    name="jointstates_sim" 
     pkg="interbotix_xsarm_control" 
     type="sim_feedback.py" 
     output="screen" 
