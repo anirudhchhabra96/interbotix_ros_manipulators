@@ -64,6 +64,8 @@ class VelocityProfileNode:
                               self.target_position.orientation.y,
                               self.target_position.orientation.z,
                               self.target_position.orientation.w]
+        rospy.loginfo(f"Current orientation: {current_orientation}")
+        rospy.loginfo(f"Target orientation: {target_orientation}")
 
         current_rpy = tf.transformations.euler_from_quaternion(current_orientation)
         target_rpy = tf.transformations.euler_from_quaternion(target_orientation)

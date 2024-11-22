@@ -29,7 +29,8 @@ class InverseKinematicsControl:
         # Subscribe to joint state topic to get the current joint positions
         self.joint_state_sub = rospy.Subscriber("/mobile_wx250s/joint_states", JointState, self.joint_state_callback)
 
-        self.joint_state_sim_sub = rospy.Subscriber("/joint_states_sim", JointState, self.joint_state_sim_callback)
+        # self.joint_state_sim_sub = rospy.Subscriber("/joint_states_sim", JointState, self.joint_state_sim_callback)
+        self.joint_state_sim_sub = rospy.Subscriber("/mobile_wx250s/joint_states", JointState, self.joint_state_sim_callback)
 
         # Publish the end-effector velocity
         self.ee_vel_pub = rospy.Publisher("/end_effector_velocity", Twist, queue_size=10)
@@ -86,14 +87,14 @@ class InverseKinematicsControl:
         try:    
             ##--------------------------------------------------------------------------------------
             ##              Using Jacobian Pseudoinverse
-            self.joint_velocities = np.linalg.pinv(jacobian_array).dot(cartesian_velocity)
+            # self.joint_velocities = np.linalg.pinv(jacobian_array).dot(cartesian_velocity)
             ##--------------------------------------------------------------------------------------
             
             ##--------------------------------------------------------------------------------------
             ##              Using Damped Jacobians
-            # damping_factor = 0.01
-            # jacobian_damped = jacobian_array.T @ np.linalg.inv(jacobian_array @ jacobian_array.T + damping_factor * np.identity(6))
-            # self.joint_velocities = np.dot(jacobian_damped, cartesian_velocity)
+            damping_factor = 0.01
+            jacobian_damped = jacobian_array.T @ np.linalg.inv(jacobian_array @ jacobian_array.T + damping_factor * np.identity(6))
+            self.joint_velocities = np.dot(jacobian_damped, cartesian_velocity)
             ##--------------------------------------------------------------------------------------
         except np.linalg.LinAlgError:
             rospy.logwarn("Jacobian is singular, unable to compute joint velocities.")
