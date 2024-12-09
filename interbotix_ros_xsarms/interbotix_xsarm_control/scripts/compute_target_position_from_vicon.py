@@ -1,6 +1,8 @@
 from geometry_msgs.msg import Pose
 import rospy
 import tf_conversions
+import numpy as np
+
 
 class DesiredPosePublisher:
     def __init__(self):
@@ -14,7 +16,7 @@ class DesiredPosePublisher:
 
         self.desired_pose_pub = rospy.Publisher('/ee_target_position', Pose, queue_size=10)
         rospy.Subscriber('/port', Pose, self.target_pose_callback)
-        rospy.Subscriber('/module', Pose, self.current_pose_callback)
+        rospy.Subscriber('/module2', Pose, self.current_pose_callback)
         rospy.Subscriber('/ee_current_position', Pose, self.robot_pose_callback)
 
     def target_pose_callback(self, msg):
@@ -87,6 +89,22 @@ class DesiredPosePublisher:
         desired_pose.orientation.y = q_combined[1]
         desired_pose.orientation.z = q_combined[2]
         desired_pose.orientation.w = q_combined[3]
+        
+        
+        # Add offset in the local x-axis of the end-effector frame
+        offset_local = np.array([-0.025, 0.0, 0.0])  # 1 cm offset along local x-axis
+        q_combined_conj = tf_conversions.transformations.quaternion_conjugate(q_combined)
+
+        # Rotate the offset into the global frame using quaternion
+        offset_global = tf_conversions.transformations.quaternion_multiply(
+            tf_conversions.transformations.quaternion_multiply(q_combined, np.append(offset_local, 0)),
+            q_combined_conj
+        )
+
+        # Add the transformed offset to the position
+        desired_pose.position.x += offset_global[0]
+        desired_pose.position.y += offset_global[1]
+        desired_pose.position.z += offset_global[2]
 
         # Publish the desired pose
         self.desired_pose_pub.publish(desired_pose)
