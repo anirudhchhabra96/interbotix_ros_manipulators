@@ -16,7 +16,7 @@ class DesiredPosePublisher:
 
         self.desired_pose_pub = rospy.Publisher('/ee_target_position', Pose, queue_size=10)
         rospy.Subscriber('/port', Pose, self.target_pose_callback)
-        rospy.Subscriber('/module2', Pose, self.current_pose_callback)
+        rospy.Subscriber('/module3', Pose, self.current_pose_callback)
         rospy.Subscriber('/ee_current_position', Pose, self.robot_pose_callback)
 
     def target_pose_callback(self, msg):
@@ -92,7 +92,7 @@ class DesiredPosePublisher:
         
         
         # Add offset in the local x-axis of the end-effector frame
-        offset_local = np.array([-0.025, 0.0, 0.0])  # 1 cm offset along local x-axis
+        offset_local = np.array([-0.075, 0.0, -0.02])  # offset (x, y, z)
         q_combined_conj = tf_conversions.transformations.quaternion_conjugate(q_combined)
 
         # Rotate the offset into the global frame using quaternion
