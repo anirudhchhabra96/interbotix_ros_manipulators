@@ -92,9 +92,8 @@ class DesiredPosePublisher:
         desired_pose.orientation.z = q_combined[2]
         desired_pose.orientation.w = q_combined[3]
         
-        
         # Add offset in the local x-axis of the end-effector frame
-        offset_local = np.array([-0.025, 0.0, 0])  # offset (x, y, z)
+        offset_local = np.array([-0.075, 0.0, 0])  # offset (x, y, z)
         q_combined_conj = tf_conversions.transformations.quaternion_conjugate(q_combined)
 
         # Rotate the offset into the global frame using quaternion
