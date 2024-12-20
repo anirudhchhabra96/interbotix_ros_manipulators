@@ -67,8 +67,8 @@
     type="compute_target_position_from_vicon.py" 
     output="screen" 
     ns="mobile_wx250s">
-  </node>
-  
+  </node> 
+
   <node name="ee_motion_planning" 
     pkg="interbotix_xsarm_control" 
     type="ee_motion_planning.py" 

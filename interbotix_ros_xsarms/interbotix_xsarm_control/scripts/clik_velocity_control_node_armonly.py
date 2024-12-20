@@ -24,7 +24,7 @@ class InverseKinematicsControl:
         self.cartesian_vel_sub = rospy.Subscriber("/desired_cartesian_velocity", Twist, self.cartesian_vel_command_callback)
 
         # Publish to the joint velocity command topic
-        self.joint_vel_pub = rospy.Publisher("/mobile_wx250s/commands/joint_group", JointGroupCommand, queue_size=10)
+        self.joint_vel_pub = rospy.Publisher("/mobile_wx250s/commands/joint_group", JointGroupCommand, queue_size=1)
 
         # Subscribe to joint state topic to get the current joint positions
         self.joint_state_sub = rospy.Subscriber("/mobile_wx250s/joint_states", JointState, self.joint_state_callback)
@@ -92,7 +92,7 @@ class InverseKinematicsControl:
             
             ##--------------------------------------------------------------------------------------
             ##              Using Damped Jacobians
-            damping_factor = 0.01
+            damping_factor = 0.001
             jacobian_damped = jacobian_array.T @ np.linalg.inv(jacobian_array @ jacobian_array.T + damping_factor * np.identity(6))
             self.joint_velocities = np.dot(jacobian_damped, cartesian_velocity)
             ##--------------------------------------------------------------------------------------
@@ -101,6 +101,7 @@ class InverseKinematicsControl:
             self.joint_velocities = np.zeros(self.num_joints)
         
         self.clamped_joint_velocities =  np.clip(self.joint_velocities, -2.35, 2.35) # Check these limits - these are ideal values (no load condition)
+        # self.clamped_joint_velocities =  np.clip(self.joint_velocities, -1.2, 1.2) # Check these limits - these are ideal values (no load condition)
     
     
     def compute_end_effector_pose(self):

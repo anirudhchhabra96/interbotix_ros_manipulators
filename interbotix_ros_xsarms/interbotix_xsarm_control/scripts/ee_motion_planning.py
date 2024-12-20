@@ -12,8 +12,8 @@ class VelocityProfileNode:
         rospy.init_node('velocity_profile_node', anonymous=True)
 
         # Parameters
-        self.max_linear_speed = rospy.get_param("~max_linear_speed", 0.2)  # Max linear speed in m/s
-        self.max_angular_speed = rospy.get_param("~max_angular_speed", 0.2)  # Max angular speed in rad/s
+        self.max_linear_speed = rospy.get_param("~max_linear_speed", 0.05)  # Max linear speed in m/s
+        self.max_angular_speed = rospy.get_param("~max_angular_speed", 0.1)  # Max angular speed in rad/s
 
         # Current and target positions
         self.current_position = Pose()
