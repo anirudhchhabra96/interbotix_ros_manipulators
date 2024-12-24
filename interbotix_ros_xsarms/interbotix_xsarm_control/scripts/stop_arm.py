@@ -1,52 +1,48 @@
 #!/usr/bin/env python3
-
 import rospy
-from std_msgs.msg import Bool
-from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
+from interbotix_xs_msgs.msg import JointGroupCommand
+import subprocess
 
 class ArmControl:
     def __init__(self):
         rospy.init_node('arm_control', anonymous=True)
         
-        # Publisher for sending the joint trajectory (for go-to-zero command)
-        self.joint_trajectory_pub = rospy.Publisher('/arm_controller/command', JointTrajectory, queue_size=10)
+        # Publisher for sending joint commands
+        self.joint_group_pub = rospy.Publisher(
+            '/mobile_wx250s/commands/joint_group', JointGroupCommand, queue_size=10
+        )
         
-        # Publisher to stop other operations (e.g., motion or commands)
-        self.stop_pub = rospy.Publisher('/stop_all_operations', Bool, queue_size=10)
+        # Define the zero position for the arm
+        self.zero_position = [0.0, -1.57, 1.57, 0.0, 0.0, 0.0]  # Radians for each joint
+        
+        # Joint group name (specific to the robot)
+        self.joint_group_name = 'arm'  # Replace with your robot's group name if different
 
-        # Set desired home position (zero position for the joints)
-        self.zero_position = [0, -1.57, 1.57, 0, 0, 0]  # Adjust based on the robot's joint count
-        
     def send_zero_position(self):
-        # Create a JointTrajectory message
-        joint_trajectory = JointTrajectory()
-        joint_trajectory.joint_names = ["joint1", "joint2", "joint3", "joint4", "joint5", "joint6"]  # Replace with your robot's joint names
+        # Create a JointGroupCommand message
+        command = JointGroupCommand()
+        command.name = self.joint_group_name
+        command.cmd = self.zero_position.tolist()
         
-        # Create a JointTrajectoryPoint message to set all joints to zero
-        point = JointTrajectoryPoint()
-        point.positions = self.zero_position
-        point.time_from_start = rospy.Duration(2.0)  # Adjust the time to reach zero position
-        
-        joint_trajectory.points = [point]
-        
-        # Send the "go to zero" command
+        # Publish the command to set the arm to the zero position
         rospy.loginfo("Sending 'go to zero' command to the arm.")
-        self.joint_trajectory_pub.publish(joint_trajectory)
-
-        # Optionally stop any other ongoing operations by sending a stop signal
-        rospy.loginfo("Stopping all other operations.")
-        self.stop_pub.publish(True)
+        self.joint_group_pub.publish(command)
 
     def run(self):
-        rate = rospy.Rate(10)  # 10 Hz
-        while not rospy.is_shutdown():
-            # For this example, we'll call the 'go to zero' command
-            self.send_zero_position()
-            rate.sleep()
+        # Call the "go to zero" command once when the node is started
+        rospy.sleep(1)  # Allow time for connections to establish
+        self.send_zero_position()
+        rospy.spin()
 
 if __name__ == "__main__":
     try:
         arm_control = ArmControl()
+        # subprocess.call(["rosnode", "kill", "mobile_wx250s/velocity_profile_node"])
+        # subprocess.call(["rosnode", "kill", "mobile_wx250s/desired_pose_publisher"])
+        # subprocess.call(["rosnode", "kill", "mobile_wx250s/ee_target_publisher"])
+        # subprocess.call(["rosnode", "kill", "mobile_wx250s/ik_velocity_control"])
+        # subprocess.call(["rosnode","kill","mobile_wx250s/ik_velocity_control"])
+
         arm_control.run()
     except rospy.ROSInterruptException:
         pass

@@ -1,68 +1,40 @@
 #!/usr/bin/env python3
-
 import rospy
-from sensor_msgs.msg import JointState
-from geometry_msgs.msg import TwistStamped
-import numpy as np
+from interbotix_xs_msgs.msg import JointGroupCommand
 
-# Define joint names and create a global variable to store joint velocities
-joint_names = ['waist', 'shoulder', 'elbow', 'forearm_roll', 'wrist_angle', 'wrist_rotate']
-joint_velocities = np.zeros(len(joint_names))
+class ArmControl:
+    def __init__(self):
+        rospy.init_node('arm_control', anonymous=True)
+        
+        # Publisher for sending joint commands
+        self.joint_group_pub = rospy.Publisher(
+            '/mobile_wx250s/commands/joint_group', JointGroupCommand, queue_size=10
+        )
+        
+        # Define the zero position for the arm
+        self.zero_position = [0, -1.57, 1.57, 0, 0, 0]  # Radians for each joint
+        
+        # Joint group name (specific to the robot)
+        self.joint_group_name = 'arm'  # Replace with your robot's group name if different
 
-# Placeholder function to compute the Jacobian matrix for the robot
-def compute_jacobian(joint_positions):
-    """
-    Compute the Jacobian matrix for the robot at the given joint positions.
-    Replace this function with your actual Jacobian computation method.
-    """
-    # Example: Return a dummy Jacobian matrix (6x6 identity matrix for simplicity)
-    return np.identity(6)
+    def send_zero_position(self):
+        # Create a JointGroupCommand message
+        command = JointGroupCommand()
+        command.name = self.joint_group_name
+        command.cmd = self.zero_position
+        
+        # Publish the command to set the arm to the zero position
+        rospy.loginfo("Sending 'go to zero' command to the arm.")
+        self.joint_group_pub.publish(command)
 
-def joint_state_callback(msg):
-    global joint_velocities
+    def run(self):
+        # Call the "go to zero" command once when the node is started
+        rospy.sleep(1)  # Allow time for connections to establish
+        self.send_zero_position()
 
-    # Map joint names to indices in the message
-    joint_map = {name: i for i, name in enumerate(msg.name)}
-
-    # Update joint velocities based on the message data
-    for i, joint_name in enumerate(joint_names):
-        if joint_name in joint_map:
-            joint_index = joint_map[joint_name]
-            joint_velocities[i] = msg.velocity[joint_index]
-
-def publish_end_effector_velocity():
-    # Initialize node and publishers
-    rospy.init_node('end_effector_velocity_publisher')
-    rospy.Subscriber('/joint_states', JointState, joint_state_callback)
-    ee_velocity_pub = rospy.Publisher('/end_effector_velocity', TwistStamped, queue_size=10)
-
-    rate = rospy.Rate(10)  # Publish rate in Hz
-
-    while not rospy.is_shutdown():
-        # Compute the Jacobian matrix based on the current joint positions
-        joint_positions = np.zeros(len(joint_names))  # Placeholder for joint positions if needed
-        jacobian = compute_jacobian(joint_positions)
-
-        # Calculate the end-effector velocity
-        end_effector_velocity = np.dot(jacobian, joint_velocities)
-
-        # Create and populate the TwistStamped message
-        ee_velocity_msg = TwistStamped()
-        ee_velocity_msg.header.stamp = rospy.Time.now()
-        ee_velocity_msg.twist.linear.x = end_effector_velocity[0]
-        ee_velocity_msg.twist.linear.y = end_effector_velocity[1]
-        ee_velocity_msg.twist.linear.z = end_effector_velocity[2]
-        ee_velocity_msg.twist.angular.x = end_effector_velocity[3]
-        ee_velocity_msg.twist.angular.y = end_effector_velocity[4]
-        ee_velocity_msg.twist.angular.z = end_effector_velocity[5]
-
-        # Publish the end-effector velocity
-        ee_velocity_pub.publish(ee_velocity_msg)
-
-        rate.sleep()
-
-if __name__ == '__main__':
+if __name__ == "__main__":
     try:
-        publish_end_effector_velocity()
+        arm_control = ArmControl()
+        arm_control.run()
     except rospy.ROSInterruptException:
         pass
