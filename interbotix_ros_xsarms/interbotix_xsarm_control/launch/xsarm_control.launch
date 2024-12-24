@@ -55,16 +55,23 @@
     ns="mobile_wx250s">
   </node>
 
-  <node name="velocity_comparison_plotter" 
+  <!-- <node name="velocity_comparison_plotter" 
     pkg="interbotix_xsarm_control" 
     type="plot_ee_tracking.py" 
     output="screen" 
     ns="mobile_wx250s">
   </node>
-  
-  <node name="compute_target_position_from_vicon" 
+   -->
+  <!-- <node name="compute_target_position_from_vicon" 
     pkg="interbotix_xsarm_control" 
     type="compute_target_position_from_vicon.py" 
+    output="screen" 
+    ns="mobile_wx250s">
+  </node>  -->
+
+  <node name="ee_target_publisher" 
+    pkg="interbotix_xsarm_control" 
+    type="ee_target_publisher.py" 
     output="screen" 
     ns="mobile_wx250s">
   </node> 

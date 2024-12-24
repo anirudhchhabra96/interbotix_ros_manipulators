@@ -20,7 +20,7 @@ class VelocityProfileNode:
         self.target_position = Pose()
         
         # Publishers and subscribers
-        self.vel_pub = rospy.Publisher('/desired_cartesian_velocity', Twist, queue_size=10)
+        self.vel_pub = rospy.Publisher('/desired_cartesian_velocity', Twist, queue_size=5)
         
 
         rospy.Subscriber('/ee_current_position', Pose, self.current_position_callback)
@@ -64,8 +64,8 @@ class VelocityProfileNode:
                               self.target_position.orientation.y,
                               self.target_position.orientation.z,
                               self.target_position.orientation.w]
-        rospy.loginfo(f"Current orientation: {current_orientation}")
-        rospy.loginfo(f"Target orientation: {target_orientation}")
+        # rospy.loginfo(f"Current orientation: {current_orientation}")
+        # rospy.loginfo(f"Target orientation: {target_orientation}")
 
         current_rpy = tf.transformations.euler_from_quaternion(current_orientation)
         target_rpy = tf.transformations.euler_from_quaternion(target_orientation)
@@ -103,7 +103,7 @@ class VelocityProfileNode:
         twist_msg.angular.z = az
 
         self.vel_pub.publish(twist_msg)
-        rospy.loginfo(f"Published Twist command: linear=({vx:.2f}, {vy:.2f}, {vz:.2f}), angular=({ax:.2f}, {ay:.2f}, {az:.2f})")
+        # rospy.loginfo(f"Published Twist command: linear=({vx:.2f}, {vy:.2f}, {vz:.2f}), angular=({ax:.2f}, {ay:.2f}, {az:.2f})")
 
     def run(self):
         rospy.spin()

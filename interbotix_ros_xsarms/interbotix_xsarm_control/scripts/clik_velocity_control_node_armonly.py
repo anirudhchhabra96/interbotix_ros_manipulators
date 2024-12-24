@@ -33,8 +33,8 @@ class InverseKinematicsControl:
         self.joint_state_sim_sub = rospy.Subscriber("/mobile_wx250s/joint_states", JointState, self.joint_state_sim_callback)
 
         # Publish the end-effector velocity
-        self.ee_vel_pub = rospy.Publisher("/end_effector_velocity", Twist, queue_size=10)
-        self.ee_pose_pub = rospy.Publisher("/ee_current_position", Pose, queue_size=10)
+        self.ee_vel_pub = rospy.Publisher("/end_effector_velocity", Twist, queue_size=5)
+        self.ee_pose_pub = rospy.Publisher("/ee_current_position", Pose, queue_size=5)
         # Retrieve the robot description from the ROS parameter server
         urdf_param = "/mobile_wx250s/robot_description"
         urdf_string = rospy.get_param(urdf_param)
