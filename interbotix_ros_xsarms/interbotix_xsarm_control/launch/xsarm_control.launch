@@ -55,19 +55,12 @@
     ns="mobile_wx250s">
   </node>
 
-  <!-- <node name="velocity_comparison_plotter" 
+  <node name="velocity_comparison_plotter" 
     pkg="interbotix_xsarm_control" 
     type="plot_ee_tracking.py" 
     output="screen" 
     ns="mobile_wx250s">
   </node>
-   -->
-  <!-- <node name="compute_target_position_from_vicon" 
-    pkg="interbotix_xsarm_control" 
-    type="compute_target_position_from_vicon.py" 
-    output="screen" 
-    ns="mobile_wx250s">
-  </node>  -->
 
   <node name="ee_target_publisher" 
     pkg="interbotix_xsarm_control" 
@@ -83,14 +76,11 @@
     ns="mobile_wx250s">
   </node>
 
-
   <!--this is for the hexapod follower, has been placed here for synchronized startup-->
   <node name="traj_follower" 
     pkg="pi_hexapod_control" 
     type="follow_traj.py" 
     output="screen" >
   </node>
-
-
 
 </launch>
