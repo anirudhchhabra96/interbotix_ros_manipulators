@@ -118,19 +118,19 @@ class EETargetPublisher:
         # Compute the hole's position (center of the front face)
         hole_position = Pose()
 
-        hole_position.position.x = 0.1061
-        hole_position.position.y = 0
-        hole_position.position.z = 0.1480
-        hole_position.orientation.x = 0
-        hole_position.orientation.y = 0
-        hole_position.orientation.z = 0
-        hole_position.orientation.w = 1
+        hole_position.position.x = 0.1061  # Hole position x (already set)
+        hole_position.position.y = 0       # Hole position y (already set)
+        hole_position.position.z = 0.1480  # Hole position z (already set)
+        hole_position.orientation.x = 0     # Hole orientation (already set)
+        hole_position.orientation.y = 0     # Hole orientation (already set)
+        hole_position.orientation.z = 0     # Hole orientation (already set)
+        hole_position.orientation.w = 1     # Hole orientation (already set)
 
         q_target = [self.cube_top_pose.orientation.x, self.cube_top_pose.orientation.y,
-                self.cube_top_pose.orientation.z, self.cube_top_pose.orientation.w]
+                    self.cube_top_pose.orientation.z, self.cube_top_pose.orientation.w]
         
         q_chaser = [self.arm_base_pose.orientation.x, self.arm_base_pose.orientation.y,
-                self.arm_base_pose.orientation.z, self.arm_base_pose.orientation.w]
+                    self.arm_base_pose.orientation.z, self.arm_base_pose.orientation.w]
         
         q_diff = tf.transformations.quaternion_multiply(q_chaser, tf.transformations.quaternion_conjugate(q_target))
 
@@ -147,27 +147,35 @@ class EETargetPublisher:
             hole_position.orientation = self.cube_top_pose.orientation
 
             # Transform end_effector_pose to inertial_frame using the arm_base_pose directly
-            # hole_position.position.x -= self.arm_base_pose.position.x + self.end_effector_pose.position.x
-            # hole_position.position.y -= self.arm_base_pose.position.y + self.end_effector_pose.position.y
-            # hole_position.position.z -= self.arm_base_pose.position.z + self.end_effector_pose.position.z
             hole_position.position.x -= self.arm_base_pose.position.x
             hole_position.position.y -= self.arm_base_pose.position.y
             hole_position.position.z -= self.arm_base_pose.position.z
             
-            hole_position.position.y += 0.0225
-            # hole_position.position.y += 0.012 # this is manual calculation, visually observed offset
-            hole_position.position.z += 0.01 # this is manual calculation, visually observed offset
+            hole_position.position.y += 0.0225  # Adjust for manual offsets
+            hole_position.position.z += 0.01    # Adjust for manual offsets
 
-            # Check relative velocity to decide whether to proceed into the hole
-            relative_orientation = self.compute_relative_orientation()
+            hole_pos = np.array([hole_position.position.x, hole_position.position.y, hole_position.position.z])
+            
+            # Compute the rotation matrix
+            rot_matrix = tf.transformations.quaternion_matrix(q_diff)
+            # Apply the rotation to the hole's position to account for the cube's rotation
+            rotated_pos = np.dot(rot_matrix[:3, :3], hole_pos)  # Ignore the last row/column for rotation
+            # Update the hole position with the rotated values
+            hole_position.position.x = rotated_pos[0]
+            hole_position.position.y = rotated_pos[1]
+            hole_position.position.z = rotated_pos[2]
+
+            # Conditions for moving inside the hole
             relative_velocity = self.compute_relative_velocity()
-            if relative_velocity is not None:
+            relative_orientation = self.compute_relative_orientation()
+
+            if relative_velocity is not None and relative_orientation is not None:
                 linear_magnitude, angular_magnitude = relative_velocity
-                if linear_magnitude < 0.05 and angular_magnitude < 0.05 and relative_orientation < 0.05:
-                    rospy.loginfo("Relative velocity low, moving into the hole.")
-                    # Move into the hole
-                    # hole_position.position.x = self.cube_top_pose.position.x - half_side
-                    hole_position.position.x += self.front_offset + 0.015
+
+                # Further conditions to move fully into the hole
+                if abs(linear_magnitude) < 0.05 and abs(angular_magnitude) < 0.05 and relative_orientation < 0.05:
+                    rospy.loginfo_once("Alignment achieved, moving into the hole.")
+                    hole_position.position.x += self.front_offset+0.05
 
         return hole_position
 

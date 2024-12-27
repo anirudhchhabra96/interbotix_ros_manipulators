@@ -84,5 +84,13 @@
   </node>
 
 
+  <!--this is for the hexapod follower, has been placed here for synchronized startup-->
+  <node name="traj_follower" 
+    pkg="pi_hexapod_control" 
+    type="follow_traj.py" 
+    output="screen" >
+  </node>
+
+
 
 </launch>
