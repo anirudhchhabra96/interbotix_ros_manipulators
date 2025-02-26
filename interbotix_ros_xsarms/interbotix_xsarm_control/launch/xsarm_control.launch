@@ -48,26 +48,35 @@
     ns="mobile_wx250s">
   </node>
 
-  <node name="ik_velocity_control" 
+  <!-- <node 
+    name="ik_velocity_control" 
     pkg="interbotix_xsarm_control" 
     type="clik_velocity_control_node_armonly.py" 
     output="screen" 
     ns="mobile_wx250s">
+  </node> -->
+
+  <node 
+    name="ik_velocity_control"
+    pkg="interbotix_xsarm_control"
+    type="clik_velocity_control_12dof.py"
+    output="screen"
+    ns="mobile_wx250s">
   </node>
 
-  <node name="velocity_comparison_plotter" 
+  <!-- <node name="velocity_comparison_plotter" 
     pkg="interbotix_xsarm_control" 
     type="plot_ee_tracking.py" 
     output="screen" 
     ns="mobile_wx250s">
-  </node>
+  </node> -->
 
-  <node name="ee_target_publisher" 
+  <!-- <node name="ee_target_publisher" 
     pkg="interbotix_xsarm_control" 
     type="ee_target_publisher.py" 
     output="screen" 
     ns="mobile_wx250s">
-  </node> 
+  </node>  -->
 
   <node name="ee_motion_planning" 
     pkg="interbotix_xsarm_control" 
@@ -75,12 +84,20 @@
     output="screen" 
     ns="mobile_wx250s">
   </node>
+  <node name="hexapod_arm_tf_publisher" 
+    pkg="interbotix_xsarm_control" 
+    type="transform_arm_hexapod.py" 
+    output="screen" 
+    ns="mobile_wx250s">
+  </node>
+
+
 
   <!--this is for the hexapod follower, has been placed here for synchronized startup-->
-  <node name="traj_follower" 
+  <!-- <node name="traj_follower" 
     pkg="pi_hexapod_control" 
     type="follow_traj.py" 
     output="screen" >
-  </node>
+  </node> -->
 
 </launch>
