@@ -9,7 +9,7 @@ def publish_static_transform():
     static_transformStamped = geometry_msgs.msg.TransformStamped()
 
     static_transformStamped.header.stamp = rospy.Time.now()
-    static_transformStamped.header.frame_id = "platform_link"
+    static_transformStamped.header.frame_id = "base_link"
     static_transformStamped.child_frame_id = "world"
     static_transformStamped.transform.translation.x = 0.0
     static_transformStamped.transform.translation.y = 0.0

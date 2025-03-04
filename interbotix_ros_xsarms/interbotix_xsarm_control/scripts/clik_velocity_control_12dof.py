@@ -185,7 +185,7 @@ class InverseKinematicsControl:
         self.joint_velocities = arm_vel
         self.qdot = q_dot
         
-        rospy.loginfo(f"joint velocities: {self.joint_velocities}")
+        # rospy.loginfo(f"joint velocities: {self.joint_velocities}")
 
 
 
@@ -250,11 +250,12 @@ class InverseKinematicsControl:
         ee_pose.orientation.z = rot[2]
         ee_pose.orientation.w = rot[3]
 
-        rospy.loginfo(f"FK Computed EE Pose (Before Transform): x={ee_pose.position.x}, y={ee_pose.position.y}, z={ee_pose.position.z}")
+        # rospy.loginfo(f"FK Computed EE Pose (Before Transform): x={ee_pose.position.x}, y={ee_pose.position.y}, z={ee_pose.position.z}")
 
         try:
             # Wait for the transform to be available
             transform = self.tf_buffer.lookup_transform('base_link', 'mobile_wx250s/base_link', rospy.Time(0), rospy.Duration(1))
+            transform2 = self.tf_buffer.lookup_transform('base_link', 'mobile_wx250s/ee_arm_link', rospy.Time(0), rospy.Duration(1))
 
             # Extract translation
             trans = transform.transform.translation
@@ -296,6 +297,20 @@ class InverseKinematicsControl:
 
             # Publish the transformed pose
             self.ee_pose_pub.publish(transformed_pose)
+            
+            # Create a Pose message
+            pose2 = Pose()
+
+            # Set position
+            pose2.position.x = transform2.transform.translation.x
+            pose2.position.y = transform2.transform.translation.y
+            pose2.position.z = transform2.transform.translation.z
+
+            # Set orientation (quaternion)
+            pose2.orientation.x = transform2.transform.rotation.x
+            pose2.orientation.y = transform2.transform.rotation.y
+            pose2.orientation.z = transform2.transform.rotation.z
+            pose2.orientation.w = transform2.transform.rotation.w
 
 
         except (tf2_ros.LookupException, tf2_ros.ConnectivityException, tf2_ros.ExtrapolationException):
@@ -305,7 +320,7 @@ class InverseKinematicsControl:
         # ee_pose = transformed_pose
         # R_platform_to_world = self.compute_rotation_matrix(self.hexapod_joint_states_vector[3],self.hexapod_joint_states_vector[4],self.hexapod_joint_states_vector[5])
         
-        self.ee_pose_pub.publish(transformed_pose)
+        self.ee_pose_pub.publish(pose2)
 
     # def compute_end_effector_pose(self):
     #     for i in range(self.num_joints):
@@ -408,11 +423,11 @@ class InverseKinematicsControl:
 
         self.pub.publish(msg)
         
-        rospy.loginfo(f"---------------------------------------------------------------------------- {0}")
-        # rospy.loginfo(f"jacobian: {jacobian_hexapod}")
-        rospy.loginfo(f"arm velocities: {self.joint_velocities}")
-        rospy.loginfo(f"hexapod velocities: {hexapod_vel}")
-        rospy.loginfo(f"---------------------------------------------------------------------------- {0}")
+        # rospy.loginfo(f"---------------------------------------------------------------------------- {0}")
+        # # rospy.loginfo(f"jacobian: {jacobian_hexapod}")
+        # rospy.loginfo(f"arm velocities: {self.joint_velocities}")
+        # rospy.loginfo(f"hexapod velocities: {hexapod_vel}")
+        # rospy.loginfo(f"---------------------------------------------------------------------------- {0}")
 
 
 

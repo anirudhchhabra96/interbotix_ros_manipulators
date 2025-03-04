@@ -78,20 +78,21 @@
     ns="mobile_wx250s">
   </node>  -->
 
-  <node name="ee_motion_planning" 
+  <!-- <node name="ee_motion_planning" 
     pkg="interbotix_xsarm_control" 
     type="ee_motion_planning.py" 
     output="screen" 
     ns="mobile_wx250s">
-  </node>
+  </node> -->
   <node name="hexapod_arm_tf_publisher" 
     pkg="interbotix_xsarm_control" 
     type="transform_arm_hexapod.py" 
     output="screen" 
     ns="mobile_wx250s">
   </node>
-
-
+  
+  <!-- Static Transform Publisher -->
+  <!-- <node pkg="tf" type="static_transform_publisher" name="global_to_base_tf" args="0 0 3.08 0 0 0 base_link global_frame 100" /> -->
 
   <!--this is for the hexapod follower, has been placed here for synchronized startup-->
   <!-- <node name="traj_follower" 
