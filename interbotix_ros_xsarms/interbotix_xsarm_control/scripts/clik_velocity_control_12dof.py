@@ -17,6 +17,10 @@ import tf
 import os
 from tf2_msgs.msg import TFMessage
 import tf.transformations as tf_transformations
+from interbotix_xsarm_control.msg import CartesianCommand  # Import the new message type
+from scipy.spatial.transform import Rotation as R
+
+
 
 class InverseKinematicsControl:
     def __init__(self):
@@ -26,7 +30,10 @@ class InverseKinematicsControl:
         #Subscribers
         self.joint_state_sub = rospy.Subscriber("/mobile_wx250s/joint_states", JointState, self.joint_state_callback)
         # self.joint_state_sim_sub = rospy.Subscriber("/mobile_wx250s/joint_states", JointState, self.joint_state_sim_callback)
-        self.cartesian_vel_sub = rospy.Subscriber("/desired_cartesian_velocity", Twist, self.cartesian_vel_command_callback)
+        # self.cartesian_vel_sub = rospy.Subscriber("/desired_cartesian_velocity", Twist, self.cartesian_vel_command_callback)
+        self.cartesian_cmd_sub = rospy.Subscriber("/desired_cartesian_command", CartesianCommand, self.cartesian_command_callback)
+
+
         self.hexapod_joint_feedback = rospy.Subscriber('/joint_states', JointState ,self.hexapod_joint_feedback_callback)
 
         # Publishers
@@ -57,36 +64,59 @@ class InverseKinematicsControl:
         self.qdot = np.zeros(12)
         self.clamped_joint_velocities = np.zeros(self.num_joints)
         self.joint_positions = np.zeros(self.num_joints)
+        self.hexapod_min_limits = np.array([
+            -0.05,   # x translation minimum (meters)
+            -0.05,   # y translation minimum (meters)
+            -0.025,  # z translation minimum (meters)
+            -0.26,   # roll minimum (radians)
+            -0.26,   # pitch minimum (radians)
+            -0.52    # yaw minimum (radians)
+        ])
+        
+        
+        self.hexapod_max_limits = np.array([
+            0.05,    # x translation maximum (meters)
+            0.05,    # y translation maximum (meters)
+            0.025,   # z translation maximum (meters)
+            0.26,    # roll maximum (radians)
+            0.26,    # pitch maximum (radians)
+            0.52     # yaw maximum (radians)
+        ])
+
+        self.hexapod_min_limits = self.hexapod_min_limits * 1000
+        self.hexapod_max_limits = self.hexapod_max_limits * 1000
+
 
         # Joint limits   |   Source: https://docs.trossenrobotics.com/interbotix_xsarms_docs/specifications/wx250s.html 
-        self.joint_position_limits_lower = np.deg2rad(np.array([-180, -108, -123, -180, -100, -180]))
-        self.joint_position_limits_upper = np.deg2rad(np.array([180, 114, 92, 180, 123, 180]))
+        self.joint_position_limits_lower = np.deg2rad(np.array([-160, -108, -123, -180, -100, -180]))
+        self.joint_position_limits_upper = np.deg2rad(np.array([160, 114, 92, 180, 123, 180]))
+        
+
+
+        
 
         # Set up solvers
         self.jacobian_solver = kdl.ChainJntToJacSolver(self.kdl_chain)
         self.joint_position_kdl = kdl.JntArray(self.num_joints)
         self.fk_solver = kdl.ChainFkSolverPos_recursive(self.kdl_chain)  # Forward Kinematics solver
+        self.ee_current_pose = Pose()
 
         # Set the loop rate
         self.rate = rospy.Rate(10)  # 10 Hz
 
         self.hexapod_joint_states_vector = [0,0,0,0,0,0]
+        # self.ee_pose
 
         rospy.loginfo("Combined IK node initialized.")
 
-    def weighted_pseudo_inverse(self, J_hexapod, J_arm, w_hexapod=0.1, w_arm=1.0):
-        # Stack Jacobians
+    def weighted_pseudo_inverse(self, J_hexapod, J_arm, w_hexapod=1.0, w_arm=1.0):
+
         J_combined_weighted = np.hstack((w_hexapod*J_hexapod, w_arm*J_arm))
 
-        # Define weight matrix
-        # W = np.diag([w_hexapod] * J_hexapod.shape[1] + [w_arm] * J_arm.shape[1])
-        W = np.diag([w_hexapod] * 6 + [w_arm] * 6)
-        print("J_hexapod shape:", J_hexapod.shape)  # Expected (6, n_hexapod_joints)
-        print("J_arm shape:", J_arm.shape)  # Expected (6, n_arm_joints)
-        print("W shape:", W.shape)  # Expected (6, n_hexapod_joints)
-
         J_weighted_pinv = np.linalg.pinv(J_combined_weighted)
-        return J_weighted_pinv
+        # J_weighted_pinv = np.linalg.pinv(J_combined_weighted.T @ J_combined_weighted + 0.01 * np.eye(J_combined_weighted.shape[1])) @ J_combined_weighted.T
+
+        return J_weighted_pinv, J_combined_weighted
 
 
     def hexapod_joint_feedback_callback(self, msg):
@@ -144,52 +174,195 @@ class InverseKinematicsControl:
         return J_hexapod
     
     
+    def compute_joint_velocities(self, desired_cart_pos, cartesian_velocity, desired_cart_orientation):
+        """
+        Compute the joint velocities based on inverse kinematics, considering both position and velocity control.
+        """
+        # Compute actual end-effector position
+        actual_cart_pos, actual_cart_orientation = self.get_end_effector_pose()
 
-    def compute_joint_velocities(self, cartesian_velocity):
+        # Compute position error - ensure it has the same dimensionality as cartesian_velocity
+        pos_error = np.zeros(6)  # Initialize a 6D vector for position and orientation error
+        pos_error[:3] = desired_cart_pos - actual_cart_pos  # First 3 elements are position error
+        # print(pos_error)
+        desired_euler = tf.transformations.euler_from_quaternion(desired_cart_orientation)
+        actual_euler = tf.transformations.euler_from_quaternion(actual_cart_orientation)
 
-        # rospy.loginfo(f"Desired Cartesian velocity: {cartesian_velocity}")
-
+        pos_error[3:] = np.array(desired_euler) - np.array(actual_euler)  # First 3 elements are position error
+        print(pos_error[3:])
+        # Kp = np.diag([5, 5, 5, 0.1, 0.1, 0.1])  # Position control gain (adjust as needed)
+        Kp = 1
+        # Compute joint velocities with position correction
         for i in range(self.num_joints):
             self.joint_position_kdl[i] = self.joint_positions[i]
-        
-        # rospy.loginfo(f"Joint states: {self.joint_position_kdl}")
 
-        # Compute the Jacobian using KDL
+        # Compute Jacobian
         jacobian = kdl.Jacobian(self.num_joints)
         self.jacobian_solver.JntToJac(self.joint_position_kdl, jacobian)
 
-        # Log the Jacobian
         jacobian_arm = np.zeros((6, self.num_joints))
         for i in range(6):
             for j in range(self.num_joints):
                 jacobian_arm[i, j] = jacobian[i, j]
 
         jacobian_hexapod = self.get_hexapod_jacobian()
-        J_combined = np.hstack((jacobian_hexapod, jacobian_arm))
-        # J_combined = jacobian_arm
-        
-        Jpinv = self.weighted_pseudo_inverse(jacobian_hexapod, jacobian_arm)
+        # J_combined = np.hstack((jacobian_hexapod, jacobian_arm))
+        Jpinv, J_combined = self.weighted_pseudo_inverse(jacobian_hexapod, jacobian_arm)
 
-        # Solve for velocities using pseudo-inverse
-        # q_dot = np.linalg.pinv(J_combined).dot(cartesian_velocity)
-        q_dot = Jpinv.dot(cartesian_velocity)
+        # Primary task (task space control)
+        # q_dot_task = Jpinv.dot(cartesian_velocity + Kp.dot(pos_error))
+        q_dot_task = Jpinv.dot(cartesian_velocity + Kp*pos_error)
+
+
+        
+        # Null space projection matrix
+        n = 12
+        null_proj = np.eye(n) - Jpinv.dot(J_combined)
+
+        # Current joint positions
+        q = np.zeros(n)
+        q[:6] = self.hexapod_joint_states_vector
+        for i in range(self.num_joints):
+            q[6 + i] = self.joint_position_kdl[i]
+
+        # Joint limits
+        q_min = np.zeros(n)
+        q_max = np.zeros(n)
+
+        # Define limits
+        q_min[:6] = self.hexapod_min_limits  # hexapod min limits
+        q_min[6:] = self.joint_position_limits_lower  # Arm lower limits
+        q_max[:6] = self.hexapod_max_limits  # hexapod max limits
+        q_max[6:] = self.joint_position_limits_upper  # Arm upper limits
+
+
+        # Gradient of joint limit avoidance objective function
+        gradient_w = self.calculate_gradient_phi(q, q_min, q_max)
+
+
+        # K0 = 0.1
+        K0 = 1e2*np.diag([0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0,0,0,0,0,0])
+
+        # Null space motion for joint limit avoidance
+        q_dot_null = null_proj.dot(K0.dot(gradient_w))
+
+        # print(q_dot_null)
+
+        # Combined control law
+        q_dot = q_dot_task #+ q_dot_null
+        # q_dot = q_dot_task
+
         # Extract hexapod and arm velocities
         hexapod_vel = q_dot[:6]  # First 6 elements
         arm_vel = q_dot[6:]      # Remaining elements
 
-        # rospy.loginfo(f"---------------------------------------------------------------------------- {0}")
-        # rospy.loginfo(f"jacobian: {jacobian_hexapod}")
-        # rospy.loginfo(f"arm velocities: {arm_vel}")
-        # rospy.loginfo(f"hexapod velocities: {hexapod_vel}")
-        # rospy.loginfo(f"---------------------------------------------------------------------------- {0}")
         self.joint_velocities = arm_vel
         self.qdot = q_dot
+
+        self.clamped_joint_velocities = np.clip(self.joint_velocities, -2.35, 2.35)
+    
+    def calculate_gradient_phi(self, q, q_min, q_max):
+        """
+        Calculate the gradient of the joint limit avoidance objective function.
         
-        # rospy.loginfo(f"joint velocities: {self.joint_velocities}")
+        Args:
+            q: Current joint positions
+            q_min: Minimum joint limits
+            q_max: Maximum joint limits
+        
+        Returns:
+            gradient: Gradient of the objective function
+        """
+        n = len(q)
+        q_mid = (q_max + q_min) / 2.0
+        gradient = np.zeros(n)
+        
+        for i in range(n):
+            # Calculate partial derivative of Φ with respect to q_i
+            # Based on equation (12) from the reference materials
+            denominator = (q_max[i] - q_min[i])**2
+            if denominator > 0:  # Avoid division by zero
+                normalized_distance = (q[i] - q_mid[i])**2 / denominator
+                gradient[i] = -2 * (q[i] - q_mid[i]) / (n * denominator)
+                # print(gradient[i])
+        
+        return gradient
+    
+    def get_end_effector_pose(self):
+        """
+        Get the current position and orientation of the end-effector.
+        """
+        ee_pos = np.array([
+            self.ee_current_pose.position.x, 
+            self.ee_current_pose.position.y, 
+            self.ee_current_pose.position.z
+        ])
+        # print(ee_pos)
+
+        ee_orientation = np.array([
+            self.ee_current_pose.orientation.x, 
+            self.ee_current_pose.orientation.y, 
+            self.ee_current_pose.orientation.z, 
+            self.ee_current_pose.orientation.w
+        ])
+
+        return ee_pos, ee_orientation
+
+
+    # def compute_joint_velocities(self, cartesian_velocity):
+
+    #     # rospy.loginfo(f"Desired Cartesian velocity: {cartesian_velocity}")
+
+    #     for i in range(self.num_joints):
+    #         self.joint_position_kdl[i] = self.joint_positions[i]
+        
+    #     # rospy.loginfo(f"Joint states: {self.joint_position_kdl}")
+
+    #     # Compute the Jacobian using KDL
+    #     jacobian = kdl.Jacobian(self.num_joints)
+    #     self.jacobian_solver.JntToJac(self.joint_position_kdl, jacobian)
+
+    #     # Log the Jacobian
+    #     jacobian_arm = np.zeros((6, self.num_joints))
+    #     for i in range(6):
+    #         for j in range(self.num_joints):
+    #             jacobian_arm[i, j] = jacobian[i, j]
+
+    #     jacobian_hexapod = self.get_hexapod_jacobian()
+    #     J_combined = np.hstack((jacobian_hexapod, jacobian_arm))
+    #     # J_combined = jacobian_arm
+        
+    #     Jpinv = self.weighted_pseudo_inverse(jacobian_hexapod, jacobian_arm)
+
+    #     # Solve for velocities using pseudo-inverse
+    #     # q_dot = np.linalg.pinv(J_combined).dot(cartesian_velocity)
+    #     q_dot = Jpinv.dot(cartesian_velocity)
+        
+    #     # Kp = 0.1
+    #     # xd = 
+    #     # x = 
+    #     # q_dot = Jpinv.dot(cartesian_velocity + Kp*(xd-x))
 
 
 
-        self.clamped_joint_velocities =  np.clip(self.joint_velocities, -2.35, 2.35) # Check these limits - these are ideal values (no load condition)
+
+    #     # Extract hexapod and arm velocities
+    #     hexapod_vel = q_dot[:6]  # First 6 elements
+    #     arm_vel = q_dot[6:]      # Remaining elements
+
+    #     self.joint_velocities = arm_vel
+    #     self.qdot = q_dot
+        
+    #     # rospy.loginfo(f"---------------------------------------------------------------------------- {0}")
+    #     # rospy.loginfo(f"jacobian: {jacobian_hexapod}")
+    #     # rospy.loginfo(f"arm velocities: {arm_vel}")
+    #     # rospy.loginfo(f"hexapod velocities: {hexapod_vel}")
+    #     # rospy.loginfo(f"---------------------------------------------------------------------------- {0}")
+    #     # rospy.loginfo(f"joint velocities: {self.joint_velocities}")
+
+
+
+    #     self.clamped_joint_velocities =  np.clip(self.joint_velocities, -2.35, 2.35) # Check these limits - these are ideal values (no load condition)
     
     def compute_rotation_matrix(self, ang_u_mrad, ang_v_mrad, ang_w_mrad):
         """
@@ -296,7 +469,7 @@ class InverseKinematicsControl:
             transformed_pose.orientation.w = transformed_orientation[3]
 
             # Publish the transformed pose
-            self.ee_pose_pub.publish(transformed_pose)
+            # self.ee_pose_pub.publish(transformed_pose)
             
             # Create a Pose message
             pose2 = Pose()
@@ -317,46 +490,23 @@ class InverseKinematicsControl:
             rospy.logerr("Could not transform ee_pose from {} to {}".format('mobile_wx250s/base_link','base_link'))
             # return None
 
-        # ee_pose = transformed_pose
-        # R_platform_to_world = self.compute_rotation_matrix(self.hexapod_joint_states_vector[3],self.hexapod_joint_states_vector[4],self.hexapod_joint_states_vector[5])
-        
+        self.ee_current_pose = pose2
         self.ee_pose_pub.publish(pose2)
 
-    # def compute_end_effector_pose(self):
-    #     for i in range(self.num_joints):
-    #         self.joint_position_kdl[i] = self.joint_positions[i]
 
-    #     ee_frame = kdl.Frame()
-    #     self.fk_solver.JntToCart(self.joint_position_kdl, ee_frame)
-
-    #     ee_pose = Pose()
-    #     ee_pose.position.x = ee_frame.p[0]
-    #     ee_pose.position.y = ee_frame.p[1]
-    #     ee_pose.position.z = ee_frame.p[2]
+    def cartesian_command_callback(self, msg):
+        """
+        Callback function for the desired Cartesian position and velocity command.
+        """
+        desired_cart_pos = np.array([msg.position.x, msg.position.y, msg.position.z])
+        desired_cart_orientation = np.array([msg.orientation.x, msg.orientation.y, msg.orientation.z, msg.orientation.w])
+        desired_cartesian_velocity = np.array([
+            msg.velocity.linear.x, msg.velocity.linear.y, msg.velocity.linear.z,
+            msg.velocity.angular.x, msg.velocity.angular.y, msg.velocity.angular.z
+        ])
         
-    #     # Convert the rotation to a quaternion
-    #     rot = ee_frame.M.GetQuaternion()
-    #     ee_pose.orientation.x = rot[0]
-    #     ee_pose.orientation.y = rot[1]
-    #     ee_pose.orientation.z = rot[2]
-    #     ee_pose.orientation.w = rot[3]
-
-
-    #     #===============================================
-
-    #     # ADD HERE THE CONVERSION OF POSE FROM ARM FRAME TO INERTIAL FRAME
-
-    #     #===============================================
-
-        
-    #     # Publish the end-effector pose
-    #     self.ee_pose_pub.publish(ee_pose)
-
-    def cartesian_vel_command_callback(self, msg):
-        msg1 = msg
-        desired_cartesian_velocity = [msg1.linear.x, msg1.linear.y, msg1.linear.z, msg1.angular.x, msg1.angular.y, msg1.angular.z]
-        # rospy.loginfo(f"Received cartesian velocity command: {desired_cartesian_velocity}")
-        self.compute_joint_velocities(desired_cartesian_velocity)
+        # Compute joint velocities using inverse kinematics
+        self.compute_joint_velocities(desired_cart_pos, desired_cartesian_velocity, desired_cart_orientation)
 
 
 
@@ -414,7 +564,7 @@ class InverseKinematicsControl:
         hexapod_vel = self.qdot[:6]  # First 6 elements
         msg = Float64MultiArray()
         msg.data = [hexapod_vel[0], hexapod_vel[1], hexapod_vel[2], hexapod_vel[3], hexapod_vel[4], hexapod_vel[5], 10.0]
-        
+        print(msg.data)
         
         
         # Publish the message

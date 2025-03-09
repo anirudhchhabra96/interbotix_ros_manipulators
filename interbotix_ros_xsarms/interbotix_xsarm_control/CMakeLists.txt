@@ -11,10 +11,25 @@ find_package(catkin REQUIRED COMPONENTS
   interbotix_xs_sdk
   interbotix_xs_modules
   interbotix_xsarm_descriptions
+  rospy
+  std_msgs
+  message_generation
+  geometry_msgs
 )
 
 ## System dependencies are found with CMake's conventions
 # find_package(Boost REQUIRED COMPONENTS system)
+
+add_message_files(
+  FILES
+  CartesianCommand.msg
+)
+
+generate_messages(
+  DEPENDENCIES
+  geometry_msgs
+  std_msgs
+)
 
 ###################################
 ## catkin specific configuration ##
@@ -22,5 +37,6 @@ find_package(catkin REQUIRED COMPONENTS
 ## The catkin_package macro generates cmake config files for your package
 ## Declare things to be passed to dependent projects
 catkin_package(
-CATKIN_DEPENDS interbotix_xs_sdk interbotix_xs_modules interbotix_xsarm_descriptions
+CATKIN_DEPENDS interbotix_xs_sdk interbotix_xs_modules interbotix_xsarm_descriptions message_runtime
 )
+
