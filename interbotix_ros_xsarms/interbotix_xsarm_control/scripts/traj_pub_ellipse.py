@@ -35,7 +35,7 @@ def generate_orbital_spinning_trajectory():
     rate = rospy.Rate(10)  # 10 Hz
 
     # Define trajectory properties
-    radius = 0.4  # Radius of the circular motion around the arm
+    radius = 0.3  # Radius of the circular motion around the arm
     height = 0.3  # Fixed height above the base
     tilt_angle = np.deg2rad(0)  # Fixed tilt for natural movement
     spin_rate = np.deg2rad(0)  # Cube spinning speed (slow)
@@ -50,7 +50,7 @@ def generate_orbital_spinning_trajectory():
         t = rospy.Time.now().to_sec() - start_time
         if t > T:  # Stop after one full loop
             print("one loop done")
-            # break
+            break
         
         # Compute circular trajectory around the arm's base
         theta = omega * t  # Angle around the arm
