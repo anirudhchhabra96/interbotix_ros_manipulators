@@ -20,8 +20,6 @@ import tf.transformations as tf_transformations
 from interbotix_xsarm_control.msg import CartesianCommand  # Import the new message type
 from scipy.spatial.transform import Rotation as R
 
-
-
 class InverseKinematicsControl:
     def __init__(self):
         # Initialize the node
@@ -189,10 +187,14 @@ class InverseKinematicsControl:
         actual_euler = tf.transformations.euler_from_quaternion(actual_cart_orientation)
 
         pos_error[3:] = np.array(desired_euler) - np.array(actual_euler)  # First 3 elements are position error
-        print(pos_error[3:])
+        # print(pos_error[3:])
         # Kp = np.diag([5, 5, 5, 0.1, 0.1, 0.1])  # Position control gain (adjust as needed)
         # Kp = 1.4
-        Kp = 0.9
+        
+        Kp = 1.5
+        # Kp = 0.5
+        K0 = 1e0*np.diag([0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0,0,0,0,0,0])
+
         # Compute joint velocities with position correction
         for i in range(self.num_joints):
             self.joint_position_kdl[i] = self.joint_positions[i]
@@ -242,13 +244,13 @@ class InverseKinematicsControl:
 
 
         # K0 = 0.1
-        K0 = 1e0*np.diag([0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0,0,0,0,0,0])
+        
         # K0 = 1
 
         # Null space motion for joint limit avoidance
         q_dot_null = null_proj.dot(K0.dot(gradient_w))
 
-        # print(q_dot_null)
+        print(gradient_w)
 
         # Combined control law
         q_dot = q_dot_task + q_dot_null
@@ -511,7 +513,7 @@ class InverseKinematicsControl:
         hexapod_vel = self.qdot[:6]  # First 6 elements
         msg = Float64MultiArray()
         msg.data = [hexapod_vel[0], hexapod_vel[1], hexapod_vel[2], hexapod_vel[3], hexapod_vel[4], hexapod_vel[5], 10.0]
-        print(msg.data)
+        # print(msg.data)
         
         
         # Publish the message

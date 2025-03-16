@@ -8,13 +8,13 @@ from interbotix_xsarm_control.msg import CartesianCommand
 from geometry_msgs.msg import Point, Twist, Pose
 from threading import Lock
 from scipy.interpolate import interp1d
+import os
 
 class TrajectoryPublisher:
     def __init__(self, file_path):
         rospy.init_node("orbital_spinning_trajectory_publisher")
         self.pub = rospy.Publisher("/desired_cartesian_command", CartesianCommand, queue_size=10)
-        rospy.Subscriber("/satorbit", Pose, self.pose_callback)  # Actual trajectory feedback
-        
+
         self.lock = Lock()
         self.actual_positions = []
         self.commanded_positions = []
@@ -26,10 +26,26 @@ class TrajectoryPublisher:
         self.actual_x = []
         self.actual_y = []
         self.actual_z = []
-        self.commanded_x = []   
+        self.commanded_x = []
         self.commanded_y = []
         self.commanded_z = []
         self.output_file = "tracking_record.txt"
+
+        # Subscriber to read the actual end-effector position from the /ee_current_position topic
+        rospy.Subscriber("/ee_current_position", Pose, self.ee_position_callback)
+
+    def ee_position_callback(self, msg):
+        # Extract position from Pose message
+        actual_pose = (msg.position.x, msg.position.y, msg.position.z)
+        with self.lock:
+            if self.start_time is not None:
+                current_time = rospy.Time.now().to_sec() - self.start_time
+                self.actual_positions.append(actual_pose)
+                self.actual_times.append(current_time)
+
+    def euler_to_tf_quaternion(self, roll, pitch, yaw, axes='sxyz'):
+        quat = tf.quaternion_from_euler(roll, pitch, yaw, axes=axes)
+        return quat
 
     def normalize(self, v):
         return v / np.linalg.norm(v)
@@ -39,7 +55,9 @@ class TrajectoryPublisher:
         p_normalized = self.normalize(p)
         yaw = np.arctan2(p_normalized[1], p_normalized[0])
         pitch = np.arctan2(-p_normalized[2], np.linalg.norm(p_normalized[:2]))
-        return tf.quaternion_from_euler(0, pitch, yaw)
+        roll = 0.01
+        quat = tf.quaternion_from_euler(roll, pitch, yaw)
+        return quat
 
     def read_waypoints(self, file_path):
         waypoints = []
@@ -70,36 +88,37 @@ class TrajectoryPublisher:
                 if self.start_time is None:
                     self.start_time = rospy.Time.now().to_sec()
                 self.commanded_positions.append((x, y, z))
-                self.time_stamps.append(rospy.Time.now().to_sec() - self.start_time)
                 self.commanded_times.append(rospy.Time.now().to_sec() - self.start_time)
 
-            rospy.loginfo(f"Publishing: Pos=({x}, {y}, {z})")
             self.pub.publish(msg)
             rate.sleep()
-
-    def pose_callback(self, msg):
-        with self.lock:
-            if self.start_time is None:
-                return
-            current_time = rospy.Time.now().to_sec() - self.start_time
-            self.actual_positions.append((msg.position.x+2, msg.position.y, msg.position.z-2))
-            self.time_stamps.append(current_time)
-            self.actual_times.append(current_time)
-    
-    
-    def save_to_file(self):
         
-        # Save the collected data to the file
+        # Sending a final stop command
+        msg = CartesianCommand()
+        msg.position = Point(x, y, z)
+        msg.velocity = Twist()
+        msg.velocity.linear.x = 0
+        msg.velocity.linear.y = 0
+        msg.velocity.linear.z = 0
+        msg.orientation.x, msg.orientation.y = quaternion[0], quaternion[1]
+        msg.orientation.z, msg.orientation.w = quaternion[2], quaternion[3]
+        self.pub.publish(msg)
+        print("Done, press Ctrl+C to continue")
+
+    def record_actual_trajectory(self):
+        rate = rospy.Rate(10)  # 10 Hz
+        while not rospy.is_shutdown():
+            rate.sleep()
+
+    def save_to_file(self):
         with open(self.output_file, 'w') as f:
             f.write("Time(s),Commanded X,Commanded Y,Commanded Z,Actual X,Actual Y,Actual Z\n")
             for i in range(len(self.commanded_times)):
-                # Ensure we don't go out of bounds (in case actual data is shorter)
                 act_x = self.actual_x[i] if i < len(self.actual_x) else 0
                 act_y = self.actual_y[i] if i < len(self.actual_y) else 0
                 act_z = self.actual_z[i] if i < len(self.actual_z) else 0
                 f.write(f"{self.commanded_times[i]},{self.commanded_x[i]},{self.commanded_y[i]},{self.commanded_z[i]},{act_x},{act_y},{act_z}\n")
-                print(i) 
-    
+
     def plot_trajectory(self):
         with self.lock:
             if not self.commanded_positions or not self.actual_positions:
@@ -109,7 +128,6 @@ class TrajectoryPublisher:
             cmd_x, cmd_y, cmd_z = zip(*self.commanded_positions)
             act_x, act_y, act_z = zip(*self.actual_positions)
 
-            # Interpolating actual positions to match commanded times
             interp_x = interp1d(self.actual_times, act_x, kind='linear', fill_value='extrapolate')
             interp_y = interp1d(self.actual_times, act_y, kind='linear', fill_value='extrapolate')
             interp_z = interp1d(self.actual_times, act_z, kind='linear', fill_value='extrapolate')
@@ -117,7 +135,6 @@ class TrajectoryPublisher:
             act_y_interp = interp_y(self.commanded_times)
             act_z_interp = interp_z(self.commanded_times)
 
-            # Store data for saving to txt file later
             self.actual_x = act_x_interp
             self.actual_y = act_y_interp
             self.actual_z = act_z_interp
@@ -144,19 +161,15 @@ class TrajectoryPublisher:
 
             plt.tight_layout()
             plt.show()
-            
 
 if __name__ == "__main__":
     try:
-        file_path = "orbitdata_meo.txt"
-        traj_pub = TrajectoryPublisher(file_path)
-        
-        traj_pub.publish_trajectory(start_idx=41, end_idx=88)   # Publish trajectory commands to robot
-        
-        traj_pub.plot_trajectory()  # Plot trajectory (actual vs commanded)
-        
-        traj_pub.save_to_file()  # Save the collected data to the file
-
+        script_dir = os.path.dirname(os.path.abspath(__file__))  # Get script's directory
+        trajectory_filename = os.path.join(script_dir, "orbitdata_meo.txt")  # Construct absolute path
+        traj_pub = TrajectoryPublisher(trajectory_filename)
+        traj_pub.publish_trajectory(start_idx=44, end_idx=80)
+        traj_pub.record_actual_trajectory()
+        traj_pub.plot_trajectory()
+        traj_pub.save_to_file()
     except rospy.ROSInterruptException:
         pass
-
